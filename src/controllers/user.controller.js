@@ -32,7 +32,7 @@ const registerUser = asyncHandler(async (req, res) => {
     }
 
     //validation - {email, username} ----------done
-    const existedUser =User.findOne({
+    const existedUser = await User.findOne({
         $or: [{ email }, { username }]
     })
     if (existedUser) {
@@ -54,13 +54,13 @@ const registerUser = asyncHandler(async (req, res) => {
     }
 
     //create user object from db
-    const user = User.create({
+    const user = await User.create({
         fullName,
         avtar: avtar.url,
         coverImage: coverImage?.url || "",
         email,
         password,
-        userName: username.toLowerCase()
+        username: username.toLowerCase()
     })
 
     //remove refresh token and password from response
