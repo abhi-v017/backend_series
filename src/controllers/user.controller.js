@@ -100,6 +100,7 @@ const registerUser = asyncHandler(async (req, res) => {
     )
 
 })
+
 const loginUser = asyncHandler(async (req, res) => {
     // req body -> data
     // username or email
@@ -282,7 +283,7 @@ const updateAvtar = asyncHandler(async (res, req) => {
         {
             new: true
         }
-    )
+    ).select("-password")
     return res
         .status(200)
         .json(200, user, "avtar changed successfully")
@@ -308,7 +309,7 @@ const updateCoverImage = asyncHandler(async (res, req) => {
         },
         {
             new: true
-        }
+        }.select("-password")
     )
     return res
         .status(200)
