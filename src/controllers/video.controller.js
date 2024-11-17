@@ -5,12 +5,36 @@ import { uploadOnCloudinary } from '../utils/cloudinary.js'
 import { ApiResponse } from '../utils/ApiResponse.js'
 import { v2 as cloudinary } from 'cloudinary';
 
-// const getAllVideos = asyncHandler(async(req,res)=>{
-//     const { page = 1, limit = 10, query, sortBy, sortType, userId } = req.query
-//     return res
-//     .status(200)
-//     .json(new ApiResponse(200, res.video, "videos fetched successfully"))
-// })
+const getAllVideos = asyncHandler(async(req,res)=>{
+    const { page = 1, limit = 10, query, sortBy, sortType, userId } = req.query
+    const pageNumber = parseInt(page, 10)
+    const limitNumber = parseInt(limit, 10)
+    // Build the query object
+    const queryObject = {};
+    if (userId) {
+        queryObject.userId = userId; // Filter by userId if provided
+    }
+    if (query) {
+        queryObject.title = { $regex: query, $options: 'i' }; // Search by title if query is provided
+    }
+
+    // Fetch videos with pagination and sorting
+    const videos = await Video.find(queryObject)
+        .sort({ [sortBy]: sortType === 'asc' ? 1 : -1 }) // Sort by the specified field
+        .skip((pageNumber - 1) * limitNumber) // Skip the records for pagination
+        .limit(limitNumber); // Limit the number of records returned
+
+    // Get the total count of videos for pagination
+    const totalVideos = await Video.countDocuments(queryObject);
+
+    // Return the response
+    return res.status(200).json(new ApiResponse(200, {
+        videos,
+        totalPages: Math.ceil(totalVideos / limitNumber),
+        currentPage: pageNumber,
+        totalVideos
+    }, "Videos fetched successfully"));
+})
 
 const publishAvideo = asyncHandler(async (req, res) => {
 
@@ -94,37 +118,64 @@ const deleteVideo = asyncHandler(async (req, res) => {
     await Video.findByIdAndDelete(videoId)
 
     return res
-    .status(200)
-    .json(new ApiResponse(200, {}, "video deleted successfully!!"))
+        .status(200)
+        .json(new ApiResponse(200, {}, "video deleted successfully!!"))
 
 })
 const updateVideoDetails = asyncHandler(async (req, res) => {
-    const { videoId } = req.params
-    const { title, description} = req.body
-    if (!title || !description) {
-        throw new ApiError(400, "values are required")
-    }
-    //TODO: update video details like title, description, thumbnail
+    const { videoId } = req.params;
+    const { title, description} = req.body;
 
-    const updateVideo = Video.findByIdAndUpdate(
-        videoId,
-        {
-            $set:{
-                title:title,
-                description:description
-            }
-        },
-        {
-            new:true
+    // Check if at least one field is provided
+    if (!title && !description && !thumbnail) {
+        throw new ApiError(400, "At least one of title or description is required");
+    }
+    const thumbnail = req.file?.path
+    if (!thumbnail) {
+        throw new ApiError(400, " avtar image required")
+    }
+
+    // Find the video by ID
+    const video = await Video.findById(videoId);
+    if (!video) {
+        throw new ApiError(404, "Video not found");
+    }
+
+    // Prepare the update object
+    const updateData = {};
+    if (title) updateData.title = title;
+    if (description) updateData.description = description;
+
+    // Handle thumbnail update if provided
+    if (thumbnail) {
+        // Thumbnail handling
+        const oldThumbnail = video.thumbnail;
+        const thumbnailPublicId = oldThumbnail.split('/').slice(-1)[0].split('.')[0];
+        if (!thumbnailPublicId) {
+            throw new ApiError(400, "Old thumbnail not found");
         }
-    )
+
+        // Delete the old thumbnail from Cloudinary
+        await cloudinary.uploader.destroy(thumbnailPublicId, { resource_type: 'image' });
+
+        // Upload the new thumbnail
+        const newThumbnail = await uploadOnCloudinary(thumbnail);
+        updateData.thumbnail = newThumbnail.url; // Add new thumbnail URL to update data
+    }
+
+    // Update the video details
+    const updatedDetails = await Video.findByIdAndUpdate(
+        videoId,
+        { $set: updateData },
+        { new: true} // runValidators ensures that the update adheres to the schema
+    );
+
     return res
     .status(200)
-    .json(200, updateVideo, "details updated successfully")
+    .json(new ApiResponse(200, updatedDetails, "Details updated successfully"));
 })
-
 export {
-    // getAllVideos,
+    getAllVideos,
     publishAvideo,
     getVideoById,
     deleteVideo,
